@@ -5,6 +5,8 @@ import os
 import json
 import asyncio
 import logging
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -16,6 +18,26 @@ intents.messages = True
 intents.guilds = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# Simple health check server for hosting platforms
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/health':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'OK')
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+def start_health_server():
+    """Start health check server in background"""
+    try:
+        server = HTTPServer(('0.0.0.0', int(os.getenv('PORT', 8080))), HealthCheckHandler)
+        server.serve_forever()
+    except Exception as e:
+        logger.error(f"Health server error: {e}")
 
 # Configuration
 CONFIG_FILE = "config.json"
@@ -237,7 +259,19 @@ TOKEN = os.getenv('MTM5NDYwOTI0NzQzNzg1MjcxNA.G4V0rZ.mhM_2CxQwwCJPbxww0U7VlaxxgN
 if not TOKEN:
     print("❌ DISCORD_TOKEN environment variable not found!")
     print("Please set your bot token as an environment variable.")
+    print("For testing, you can also put your token directly here:")
+    print("TOKEN = 'MTM5NDYwOTI0NzQzNzg1MjcxNA.G4V0rZ.mhM_2CxQwwCJPbxww0U7VlaxxgNwLCQgAxmJBM'")
     exit(1)
 
 if __name__ == "__main__":
-    bot.run(MTM5NDYwOTI0NzQzNzg1MjcxNA.G4V0rZ.mhM_2CxQwwCJPbxww0U7VlaxxgNwLCQgAxmJBM)
+    # Start health check server in background
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
+    
+    try:
+        bot.run(TOKEN)
+    except discord.LoginFailure:
+        print("❌ Invalid bot token!")
+    except Exception as e:
+        print(f"❌ Error starting bot: {e}")
+        logger.error(f"Bot startup error: {e}")
